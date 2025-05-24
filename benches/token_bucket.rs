@@ -1,0 +1,122 @@
+//! Benchmarks for the Token Bucket rate limiter.
+
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use std::time::Duration;
+
+use bucketboss::{RateLimiter, ReconfigurableRateLimiter, TokenBucket};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Barrier;
+
+// A simple mock clock for benchmarking
+#[derive(Default, Clone)]
+struct MockClock(Arc<AtomicU64>);
+
+impl bucketboss::clock::Clock for MockClock {
+    fn now(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+fn token_bucket_acquire_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group("token_bucket_acquire");
+
+    // Test with different rates and capacities
+    let test_cases = [
+        (10, 1.0),     // 1 token per second, burst of 10
+        (100, 10.0),   // 10 tokens per second, burst of 100
+        (1000, 100.0), // 100 tokens per second, burst of 1000
+    ];
+
+    for (capacity, rate) in test_cases.iter() {
+        group.bench_with_input(
+            format!("capacity_{}_rate_{}", capacity, rate),
+            &(capacity, rate),
+            |b, &(capacity, rate)| {
+                let clock = MockClock::default();
+                let bucket = TokenBucket::with_clock(*capacity, *rate, clock);
+
+                b.iter(|| {
+                    let _ = black_box(bucket.try_acquire(1));
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+fn token_bucket_contention_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group("token_bucket_contention");
+
+    // Test with different thread counts
+    let thread_counts = [1, 2, 4, 8];
+
+    for &num_threads in thread_counts.iter() {
+        group.bench_function(format!("{}_threads", num_threads), |b| {
+            b.iter_custom(|iters| {
+                let clock = Arc::new(MockClock::default());
+                let clock = MockClock(clock.0.clone());
+                let bucket = Arc::new(TokenBucket::with_clock(
+                    1_000_000,   // Large capacity to avoid rate limiting
+                    1_000_000.0, // High rate
+                    clock,
+                ));
+
+                let barrier = Arc::new(Barrier::new(num_threads + 1));
+                let mut handles = vec![];
+
+                for _ in 0..num_threads {
+                    let bucket = bucket.clone();
+                    let barrier = barrier.clone();
+
+                    let handle = thread::spawn(move || {
+                        barrier.wait();
+                        for _ in 0..(iters / num_threads as u64) {
+                            bucket.try_acquire(1).unwrap();
+                            black_box(());
+                        }
+                    });
+
+                    handles.push(handle);
+                }
+
+                let start = std::time::Instant::now();
+                barrier.wait();
+
+                for handle in handles {
+                    handle.join().unwrap();
+                }
+
+                start.elapsed()
+            });
+        });
+    }
+
+    group.finish();
+}
+
+fn token_bucket_update_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group("token_bucket_update");
+
+    group.bench_function("update_config", |b| {
+        let clock = MockClock::default();
+        let bucket = TokenBucket::with_clock(100, 10.0, clock);
+
+        b.iter(|| {
+            bucket.update_config(200, 20.0).unwrap();
+            black_box(());
+            bucket.update_config(100, 10.0).unwrap();
+            black_box(());
+        });
+    });
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    token_bucket_acquire_benchmark,
+    token_bucket_contention_benchmark,
+    token_bucket_update_benchmark
+);
+criterion_main!(benches);

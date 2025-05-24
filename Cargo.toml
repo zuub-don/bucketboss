@@ -1,0 +1,81 @@
+[package]
+name = "bucketboss"
+version = "0.1.0"
+edition = "2021"
+description = "A high-performance, flexible rate limiting library for Rust"
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/bucketboss"
+repository = "https://github.com/copyleftdev/bucketboss"
+keywords = ["rate-limiting", "throttling", "api", "async", "no-std"]
+categories = ["algorithms", "asynchronous", "web-programming"]
+
+authors = ["Copyleft Dev <info@copyleft.dev>"]
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+
+# Async support
+async = ["tokio"]
+
+# Distributed rate limiting
+distributed = ["redis"]
+
+# For testing and examples
+full = ["std", "async"]
+
+[dependencies]
+
+# Core dependencies
+cfg-if = "1.0"
+
+# Optional dependencies
+redis = { version = "0.24", optional = true, features = ["aio", "tokio-comp"] }
+tokio = { version = "1.0", optional = true, features = ["rt", "time"] }
+
+# Dev dependencies
+[dev-dependencies]
+proptest = { version = "1.0", features = ["std", "fork"] }
+proptest-derive = "0.4"
+proptest-arbitrary = "0.1"
+criterion = { version = "0.5" }
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "time", "sync", "macros"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+lazy_static = "1.4"
+pretty_assertions = "1.0"
+
+[[bench]]
+name = "token_bucket"
+harness = false
+
+[[bench]]
+name = "leaky_bucket"
+harness = false
+
+[[bench]]
+name = "simple_bench"
+harness = false
+
+[[test]]
+name = "proptests"
+path = "tests/proptests.rs"
+
+[[test]]
+name = "leaky_bucket_proptests"
+path = "tests/leaky_bucket_proptests.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[example]]
+name = "axum_middleware"
+required-features = ["async"]
+
+[[example]]
+name = "embedded"
+required-features = ["alloc"]
