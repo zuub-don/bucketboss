@@ -38,7 +38,7 @@ tokio = { version = "1.0", optional = true, features = ["rt", "time"] }
 [dev-dependencies]
 proptest = { version = "1.0", features = ["std", "fork"] }
 proptest-derive = "0.4"
-proptest-arbitrary = "0.1"
+proptest-arbitrary = "0.2"
 criterion = { version = "0.5" }
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1.0", features = ["rt-multi-thread", "time", "sync", "macros"] }
