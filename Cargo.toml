@@ -12,18 +12,30 @@ categories = ["algorithms", "asynchronous", "web-programming"]
 authors = ["Copyleft Dev <info@copyleft.dev>"]
 
 [features]
+# Default features - enable std by default
 default = ["std"]
+
+# Core features
 std = []
 alloc = []
+log = []  # Make log an optional feature
 
 # Async support
-async = ["tokio"]
+async = ["dep:tokio"]
 
 # Distributed rate limiting
 distributed = ["redis"]
 
+# Enable all features for development and testing
+full = ["std", "async", "log", "redis"]
+
+# Enable Redis support (requires async)
+redis = ["dep:redis", "async"]
+
+# Enable embedded support (no_std)
+embedded = ["dep:panic-halt"]
+
 # For testing and examples
-full = ["std", "async"]
 
 [dependencies]
 
@@ -33,20 +45,31 @@ cfg-if = "1.0"
 # Optional dependencies
 redis = { version = "0.24", optional = true, features = ["aio", "tokio-comp"] }
 tokio = { version = "1.0", optional = true, features = ["rt", "time"] }
+panic-halt = { version = "0.2", optional = true }
 
 # Dev dependencies
 [dev-dependencies]
 proptest = { version = "1.0", features = ["std", "fork"] }
+http-body-util = "0.1.0"
+http-body = "1.0.0"
+reqwest = { version = "0.11", features = ["json"] }
+futures = "0.3"
 proptest-derive = "0.4"
 proptest-arbitrary = "0.1"
 criterion = { version = "0.5" }
-axum = { version = "0.7", features = ["macros"] }
-tokio = { version = "1.0", features = ["rt-multi-thread", "time", "sync", "macros"] }
+axum = { version = "0.7", features = ["macros", "http1", "http2"] }
+axum-test = "18.0.0-rc3"
+tokio = { version = "1.0", features = ["rt-multi-thread", "time", "sync", "macros", "rt"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rand = "0.8"
 lazy_static = "1.4"
 pretty_assertions = "1.0"
+log = "0.4"
+panic-halt = "0.2"
+tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
+http = "0.2"
+hyper = { version = "0.14", features = ["server", "http1", "http2", "tcp"] }
 
 [[bench]]
 name = "token_bucket"

@@ -4,11 +4,8 @@
 //! It includes a custom middleware that applies rate limiting to all routes.
 
 use axum::{
-    body::Bytes,
-    error_handling::HandleError,
-    extract::State,
-    handler::Handler,
-    http::{Request, StatusCode},
+    extract::{Request, State},
+    http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
@@ -43,18 +40,17 @@ impl IntoResponse for AppError {
 }
 
 // Middleware function that applies rate limiting
-async fn rate_limiter_middleware<B>(
+async fn rate_limiter_middleware(
     State(state): State<AppState>,
-    request: Request<B>,
-    next: Next<B>,
+    request: Request,
+    next: Next,
 ) -> Result<Response, AppError> {
-    // Try to acquire a token from the rate limiter
-    let mut limiter = state.rate_limiter.lock().await;
+    let limiter = state.rate_limiter.lock().await;
+    
     if limiter.try_acquire(1).is_err() {
         return Err(AppError::RateLimitExceeded);
     }
-
-    // If we have a token, proceed with the request
+    
     let response = next.run(request).await;
     Ok(response)
 }
@@ -77,43 +73,49 @@ async fn status(State(state): State<AppState>) -> String {
 #[tokio::main]
 async fn main() {
     // Create a rate limiter that allows 10 requests per second with a burst of 5
-    let rate_limiter = TokenBucket::new(5, 10.0);
-
+    let rate_limiter = Arc::new(Mutex::new(TokenBucket::new(5, 10.0)));
+    
     // Create the application state
-    let state = AppState {
-        rate_limiter: Arc::new(Mutex::new(rate_limiter)),
-    };
-
-    // Build our application with a route
+    let state = AppState { rate_limiter };
+    
+    // Build our application with some routes
     let app = Router::new()
         .route("/", get(hello_world))
         .route("/status", get(status))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            |state: State<AppState>, req, next| async move {
-                rate_limiter_middleware(state, req, next).await
-            },
-        ))
+        .layer(
+            ServiceBuilder::new()
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    |state: axum::extract::State<AppState>, req: Request, next: Next| async move {
+                        rate_limiter_middleware(state, req, next).await
+                    },
+                ))
+        )
         .with_state(state);
-
+    
     // Run the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!("Server running on http://{}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    println!("Listening on {}", addr);
+    
+    axum::serve(
+        tokio::net::TcpListener::bind(addr).await.unwrap(),
+        app
+    )
+    .await
+    .unwrap();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::to_bytes;
-    use axum::http::Request;
-    use axum::routing::get;
-    use axum::Router;
-    use std::net::TcpListener;
+    use axum::{
+        routing::get,
+        Router,
+    };
+    use std::sync::Arc;
     use tokio::sync::Mutex;
+    use tokio::net::TcpListener;
+    use std::sync::mpsc;
 
     #[tokio::test]
     async fn test_rate_limiter_middleware() {
@@ -134,15 +136,51 @@ mod tests {
             ))
             .with_state(state);
 
-        // Create a test client
-        let client = axum_test::TestClient::new(app);
-
+        // Create a channel to communicate the server address
+        let (tx, rx) = mpsc::sync_channel(1);
+        
+        // Clone the app for the server task
+        let server_app = app.clone();
+        
+        // Start the server in a separate thread
+        let _server_handle = std::thread::spawn(move || {
+            // Create a new runtime for the server thread
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            
+            rt.block_on(async {
+                // Bind to a random port
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                
+                // Send the address back to the test
+                tx.send(addr).unwrap();
+                
+                // Start the server
+                axum::serve(listener, server_app.into_make_service())
+                    .with_graceful_shutdown(async {
+                        // This future will resolve when the test is done
+                        futures::future::pending::<()>().await
+                    })
+                    .await
+                    .unwrap();
+            });
+        });
+        
+        // Get the server address
+        let addr = rx.recv().unwrap();
+        
+        // Create a client
+        let client = reqwest::Client::new();
+        
         // First request should succeed
-        let response = client.get("/").send().await;
-        assert_eq!(response.status(), StatusCode::OK);
-
+        let url = format!("http://{}", addr);
+        let response = client.get(&url).send().await.unwrap();
+        assert_eq!(response.status(), 200); // 200 OK
+        
         // Second request should be rate limited
-        let response = client.get("/").send().await;
-        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let response = client.get(&url).send().await.unwrap();
+        assert_eq!(response.status(), 429); // 429 Too Many Requests
+        
+        // The server will be cleaned up when the test thread is dropped
     }
 }

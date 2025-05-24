@@ -127,7 +127,7 @@ mod property_tests {
 
     /// Generate a strategy for rate values
     fn rate_strategy() -> impl Strategy<Value = f64> {
-        (0.1f64..1000.0f64)
+        0.1f64..1000.0f64
     }
 
     /// Generate a strategy for capacity/burst values
