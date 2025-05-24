@@ -1,0 +1,51 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Push events matching v1.0, v20.15.10, etc.
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          echo "version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## What's Changed
+            
+            *List of changes in this release*
+            
+            ### How to Upgrade
+            
+            Update your `Cargo.toml`:
+            ```toml
+            [dependencies]
+            bucketboss = "${{ steps.version.outputs.version }}"
+            ```
+          draft: false
+          prerelease: false
+          
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/package/bucketboss-${{ steps.version.outputs.version }}.crate
+          asset_name: bucketboss-${{ steps.version.outputs.version }}.crate
+          asset_content_type: application/octet-stream

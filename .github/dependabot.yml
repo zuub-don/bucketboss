@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Assign pull requests to the person or team who should review them
+    assignees:
+      - "@copyleftdev"
+
+  # Enable version updates for Cargo
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Assign pull requests to the person or team who should review them
+    assignees:
+      - "@copyleftdev"
