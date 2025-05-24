@@ -3,17 +3,30 @@
 //! This example demonstrates how to use the TokenBucket rate limiter in a `no_std` environment
 //! with a custom clock implementation.
 
-#![no_std]
-#![no_main]
+// Only enable no_std and no_main for actual embedded targets
+#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_main)]
 
 use core::sync::atomic::{AtomicU64, Ordering};
+
+// Only use panic-halt in no_std environments
+#[cfg(not(test))]
 use panic_halt as _;
 
 use bucketboss::{
-    clock::{Clock, MockClock},
-    error::Result,
-    RateLimiter, TokenBucket,
+    clock::Clock,
+    RateLimiter,
+    TokenBucket,
 };
+
+#[cfg(not(test))]
+use core::panic::PanicInfo;
+
+#[cfg(not(test))]
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
+}
 
 // A simple mock hardware timer that increments every millisecond
 struct HardwareTimer {
@@ -56,13 +69,14 @@ pub fn timer_tick() {
     TIMER.increment(1);
 }
 
+// Main function for embedded targets
 #[no_mangle]
-pub fn main() -> ! {
+pub extern "C" fn embedded_main() -> ! {
     // Create a clock that uses our hardware timer
     let clock = HardwareClock { timer: &TIMER };
 
     // Create a rate limiter that allows 10 operations per second with a burst of 5
-    let mut rate_limiter = TokenBucket::with_clock(5, 10.0, clock);
+    let rate_limiter = TokenBucket::with_clock(5, 10.0, clock);
 
     // Simulate some operations
     for i in 0..20 {
@@ -76,11 +90,11 @@ pub fn main() -> ! {
         match rate_limiter.try_acquire(1) {
             Ok(_) => {
                 // Operation allowed
-                log::info!("Operation {}: Allowed", i);
-            }
+                log::info("Operation allowed", format_args!("Operation {}: Allowed", i));
+            },
             Err(_) => {
                 // Rate limited
-                log::warn!("Operation {}: Rate limited", i);
+                log::warn("Operation limited", format_args!("Operation {}: Rate limited", i));
             }
         }
     }
@@ -91,19 +105,34 @@ pub fn main() -> ! {
 
 // Mock logging for the example
 mod log {
-    use core::fmt::Arguments;
+    use core::fmt;
 
-    pub fn info(_: &str, _: core::fmt::Arguments) {
-        // In a real system, this would log to a serial port or similar
+    pub fn info(_msg: &str, _args: fmt::Arguments) {
+        // In a real embedded system, this would write to a UART or other output
+        // For testing purposes, we'll use core::hint::black_box to prevent optimization
+        #[cfg(test)]
+        core::hint::black_box((_msg, _args));
     }
 
-    pub fn warn(_: &str, _: core::fmt::Arguments) {
-        // In a real system, this would log to a serial port or similar
+    pub fn warn(_msg: &str, _args: fmt::Arguments) {
+        // In a real embedded system, this would write to a UART or other output
+        // For testing purposes, we'll use core::hint::black_box to prevent optimization
     }
 }
 
-// Required for no_std binaries
+// Test entry point
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_embedded() {
+        // This is a test function for the embedded example
+    }
+}
+
+// Main entry point for embedded targets
+#[cfg(not(test))]
 #[no_mangle]
-fn _start() -> ! {
-    main()
+pub extern "C" fn _start() -> ! {
+    // Call our embedded main function
+    embedded_main()
 }

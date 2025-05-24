@@ -1,11 +1,13 @@
 //! Benchmarks for the Leaky Bucket rate limiter.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Barrier;
+use std::thread;
 use std::time::Duration;
 
 use bucketboss::{LeakyBucket, RateLimiter, ReconfigurableRateLimiter};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Barrier;
 
 // A simple mock clock for benchmarking
 #[derive(Default, Clone)]

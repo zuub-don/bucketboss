@@ -1,8 +1,8 @@
-use bucketboss::{LeakyBucket, RateLimiter, ReconfigurableRateLimiter, TokenBucket};
+use bucketboss::{LeakyBucket, RateLimiter, TokenBucket};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 fn bench_token_bucket_acquire(c: &mut Criterion) {
     let mut group = c.benchmark_group("token_bucket_acquire");
